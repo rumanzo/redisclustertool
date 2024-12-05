@@ -125,9 +125,9 @@ class RedisClusterTool:
                         if len(neighbor_group_masters) > desired_groups_len[neighbor_group]:
                             for slave_node in self.get_slaves(nodes=group_nodes[group], maxport=maxport):
                                 if self.get_node_group(nodes=nodes,
-                                                       node=self.get_masters(nodes=nodes, slavenodeid=slave_node['id'], maxport=maxport),
+                                                       node=self.get_masters(nodes=nodes, slavenodeid=slave_node['node_id'], maxport=maxport),
                                                        maxport=maxport) == neighbor_group:  # orphaned nodes can't exist
-                                    nodes = self.plan_clusternode_failover(nodes=nodes, slavenodeid=slave_node['id'])
+                                    nodes = self.plan_clusternode_failover(nodes=nodes, slavenodeid=slave_node['node_id'])
                                     group_nodes = self.get_nodes_groups(nodes=nodes, maxport=maxport)
                                     success = True
                                     break  # stop iterate over current group slaves
@@ -141,8 +141,8 @@ class RedisClusterTool:
                         if len(neighbor_group_masters) > desired_groups_len[neighbor_group]:
                             group_slaves = self.get_slaves(nodes=group_nodes[group], maxport=maxport)
                             if group_slaves:
-                                nodes = self.plan_clusternode_replicate(nodes=nodes, masternodeid=neighbor_group_masters[-1]['id'], slavenodeid=group_slaves[0]['id'])
-                                nodes = self.plan_clusternode_failover(nodes=nodes, slavenodeid=group_slaves[0]['id'])
+                                nodes = self.plan_clusternode_replicate(nodes=nodes, masternodeid=neighbor_group_masters[-1]['node_id'], slavenodeid=group_slaves[0]['node_id'])
+                                nodes = self.plan_clusternode_failover(nodes=nodes, slavenodeid=group_slaves[0]['node_id'])
                                 group_nodes = self.get_nodes_groups(nodes=nodes, maxport=maxport)
                                 break
             elif master_skew < 0:  # need to reduce masters (too high number of masters)
@@ -155,9 +155,9 @@ class RedisClusterTool:
                             for slave_node in self.get_slaves(nodes=group_nodes[neighbor_group], maxport=maxport):
                                 if self.get_node_group(nodes=nodes,
                                                        node=self.get_masters(nodes=nodes, slavenodeid=slave_node[
-                                                           'id'], maxport=maxport),
+                                                           'node_id'], maxport=maxport),
                                                        maxport=maxport) == group:
-                                    nodes = self.plan_clusternode_failover(nodes=nodes, slavenodeid=slave_node['id'])
+                                    nodes = self.plan_clusternode_failover(nodes=nodes, slavenodeid=slave_node['node_id'])
                                     group_nodes = self.get_nodes_groups(nodes=nodes, maxport=maxport)
                                     group_masters = self.get_masters(nodes=group_nodes[group], maxport=maxport)
                                     success = True
@@ -172,8 +172,8 @@ class RedisClusterTool:
                         if len(neighbor_group_masters) < desired_groups_len[neighbor_group]:
                             neighbor_group_slaves = self.get_slaves(nodes=neighbor_nodes, maxport=maxport)
                             if neighbor_group_slaves:
-                                nodes = self.plan_clusternode_replicate(nodes=nodes, masternodeid=group_masters[-1]['id'], slavenodeid=neighbor_group_slaves[0]['id'])
-                                nodes = self.plan_clusternode_failover(nodes=nodes, slavenodeid=neighbor_group_slaves[0]['id'])
+                                nodes = self.plan_clusternode_replicate(nodes=nodes, masternodeid=group_masters[-1]['node_id'], slavenodeid=neighbor_group_slaves[0]['node_id'])
+                                nodes = self.plan_clusternode_failover(nodes=nodes, slavenodeid=neighbor_group_slaves[0]['node_id'])
                                 group_nodes = self.get_nodes_groups(nodes=nodes, maxport=maxport)
                                 group_masters = self.get_masters(nodes=group_nodes[group], maxport=maxport)
                                 break
@@ -198,17 +198,17 @@ class RedisClusterTool:
         # step 1 - remove fine leveled nodes from nodes
         masters = self.get_masters(nodes=nodes, maxport=maxport)
         for master in masters:
-            master_group = self.get_node_group(nodes=nodes, maxport=maxport, nodeid=master['id'])
-            slaves = self.get_slaves(nodes=nodes, masternodeid=master['id'])
+            master_group = self.get_node_group(nodes=nodes, maxport=maxport, nodeid=master['node_id'])
+            slaves = self.get_slaves(nodes=nodes, masternodeid=master['node_id'])
             local_workset_groups = self.get_nodes_groups(nodes=[master] + slaves, maxport=maxport)
             if len(slaves) == replicas and len(local_workset_groups) == replicas + 1:
                 for node in [master]+slaves:
-                    indexes_for_remove.append(self.get_node_index(nodes=nodes, nodeid=node['id']))
+                    indexes_for_remove.append(self.get_node_index(nodes=nodes, nodeid=node['node_id']))
             elif len(slaves) > replicas and len(local_workset_groups) == replicas + 1:
                 for group, group_slaves in self.get_nodes_groups(nodes=slaves, maxport=maxport).items():
                     if group != master_group:
-                        indexes_for_remove.append(self.get_node_index(nodes=nodes, nodeid=group_slaves[-1]['id']))
-                indexes_for_remove.append(self.get_node_index(nodes=nodes, nodeid=master['id']))
+                        indexes_for_remove.append(self.get_node_index(nodes=nodes, nodeid=group_slaves[-1]['node_id']))
+                indexes_for_remove.append(self.get_node_index(nodes=nodes, nodeid=master['node_id']))
             else:
                 continue   # keep unclean nodes in workset
 
@@ -221,21 +221,21 @@ class RedisClusterTool:
         workset_masters = self.get_masters(nodes=workset_nodes, maxport=maxport)
         for master in workset_masters:
             workset_slaves = self.get_slaves(nodes=workset_nodes, maxport=maxport)
-            workset_slaves_ids = list(map(lambda node: node['id'], workset_slaves))
-            master_group = self.get_node_group(nodes=nodes, nodeid=master['id'], maxport=maxport)
+            workset_slaves_ids = list(map(lambda node: node['node_id'], workset_slaves))
+            master_group = self.get_node_group(nodes=nodes, nodeid=master['node_id'], maxport=maxport)
 
             workset_slaves_groups = self.get_nodes_groups(nodes=workset_slaves, maxport=maxport)
             workset_slaves_groups_wo_mg = dict(filter(lambda kv: kv[0] != master_group, workset_slaves_groups.items()))
 
             # try softly (with less amount of cluster replicates) swap slaves with neighbors if we can't find enough number of groups
-            workset_masters_ids: List[str] = list(map(lambda node: node['id'], workset_masters))
+            workset_masters_ids: List[str] = list(map(lambda node: node['node_id'], workset_masters))
             if len(workset_slaves_groups_wo_mg.keys()) < replicas:
                 # filter only healthy masters that not exists in our problem workset
-                neighbor_group_masters: List[Dict[str, Any]] = list(filter(lambda node: node['id'] not in workset_masters_ids and self.get_node_group(nodes=nodes, node=node) != master_group,
+                neighbor_group_masters: List[Dict[str, Any]] = list(filter(lambda node: node['node_id'] not in workset_masters_ids and self.get_node_group(nodes=nodes, node=node) != master_group,
                                                                  self.get_masters(nodes=nodes, maxport=maxport)))  # only reason is get healthy masters from another groups
                 for neighbor_master in neighbor_group_masters:
                     neighbor_master_group = self.get_node_group(nodes=nodes, maxport=maxport, node=neighbor_master)
-                    neighbor_master_slaves: List[Dict[str, Any]] = list(filter(lambda node: node['id'] not in workset_slaves_ids, self.get_slaves(nodes=nodes, masternodeid=neighbor_master['id'], maxport=maxport)))
+                    neighbor_master_slaves: List[Dict[str, Any]] = list(filter(lambda node: node['node_id'] not in workset_slaves_ids, self.get_slaves(nodes=nodes, masternodeid=neighbor_master['node_id'], maxport=maxport)))
                     neighbor_master_slaves_groups: Dict[str, List[Dict[str, Any]]] = dict(filter(lambda kv: kv[0] != master_group,   # filter inappropriate slaves that in the same group as our master
                                                                            self.get_nodes_groups(nodes=neighbor_master_slaves, maxport=maxport).items()))
                     slaves_group_diff = set(neighbor_master_slaves_groups).symmetric_difference(workset_slaves_groups_wo_mg.keys())
@@ -250,16 +250,16 @@ class RedisClusterTool:
                                 if slaves_for_change:   # continue if we find some appropriate slaves for swap
                                     slave_for_change = self.mergevalueslists(*slaves_for_change.values())[0]
 
-                                    nodes = self.plan_clusternode_replicate(nodes=nodes, masternodeid=master['id'],
-                                                                            slavenodeid=neighbor_master_slaves[0]['id'])
-                                    nodes = self.plan_clusternode_replicate(nodes=nodes, masternodeid=neighbor_master['id'],
-                                                                            slavenodeid=slave_for_change['id'])
-                                    workset_nodes[self.get_node_index(nodes=workset_nodes, nodeid=slave_for_change['id'])] = neighbor_master_slaves[0]
+                                    nodes = self.plan_clusternode_replicate(nodes=nodes, masternodeid=master['node_id'],
+                                                                            slavenodeid=neighbor_master_slaves[0]['node_id'])
+                                    nodes = self.plan_clusternode_replicate(nodes=nodes, masternodeid=neighbor_master['node_id'],
+                                                                            slavenodeid=slave_for_change['node_id'])
+                                    workset_nodes[self.get_node_index(nodes=workset_nodes, nodeid=slave_for_change['node_id'])] = neighbor_master_slaves[0]
                                     workset_slaves = self.get_slaves(nodes=workset_nodes, maxport=maxport)
                                     workset_slaves_groups = self.get_nodes_groups(nodes=workset_slaves, maxport=maxport)
                                     workset_slaves_groups_wo_mg: Dict[str, List[Dict[str, Any]]] = dict(filter(lambda kv: kv[0] != master_group, workset_slaves_groups.items()))
-                                    neighbor_master_slaves: List[Dict[str, Any]] = list(filter(lambda node: node['id'] not in workset_slaves_ids, self.get_slaves(nodes=nodes,
-                                                                                     masternodeid=neighbor_master['id'], maxport=maxport)))
+                                    neighbor_master_slaves: List[Dict[str, Any]] = list(filter(lambda node: node['node_id'] not in workset_slaves_ids, self.get_slaves(nodes=nodes,
+                                                                                     masternodeid=neighbor_master['node_id'], maxport=maxport)))
                                     neighbor_master_slaves_groups: Dict[str, List[Dict[str, Any]]] = dict(filter(lambda kv: kv[0] != master_group,  # filter inappropriate slaves that in the same group as our master
                                                                                                   self.get_nodes_groups(nodes=neighbor_master_slaves, maxport=maxport).items()))
                                     if len(workset_slaves_groups_wo_mg) >= replicas:
@@ -271,29 +271,29 @@ class RedisClusterTool:
             # check success and do more aggressive if we can't find appropriate set of slave nodes (add all another nodes until success)
             if len(workset_slaves_groups_wo_mg) < replicas:
                 while len(workset_slaves_groups_wo_mg) < replicas and len(workset_masters) != masters:
-                    neighbor_group_masters = list(filter(lambda node: node['id'] not in workset_masters_ids,
+                    neighbor_group_masters = list(filter(lambda node: node['node_id'] not in workset_masters_ids,
                                                          self.get_masters(nodes=nodes, maxport=maxport)))
-                    neighbor_master_slaves = self.get_slaves(nodes=nodes, masternodeid=neighbor_group_masters[0]['id'])
+                    neighbor_master_slaves = self.get_slaves(nodes=nodes, masternodeid=neighbor_group_masters[0]['node_id'])
                     for node in [neighbor_group_masters[0]] + neighbor_master_slaves:
-                        if not self.get_node(nodes=workset_nodes, nodeid=node['id']):   # add to work workset only once
+                        if not self.get_node(nodes=workset_nodes, nodeid=node['node_id']):   # add to work workset only once
                             workset_nodes.append(node)
                     workset_masters.append(neighbor_group_masters[0])   # but we need to handle this master again in any case
-                    workset_masters_ids.append(neighbor_group_masters[0]['id'])
+                    workset_masters_ids.append(neighbor_group_masters[0]['node_id'])
                     workset_slaves = self.get_slaves(nodes=workset_nodes, maxport=maxport)
-                    workset_slaves_ids = list(map(lambda node: node['id'], workset_slaves))
+                    workset_slaves_ids = list(map(lambda node: node['node_id'], workset_slaves))
                     workset_slaves_groups = self.get_nodes_groups(nodes=workset_slaves, maxport=maxport)
                     workset_slaves_groups_wo_mg = dict(filter(lambda kv: kv[0] != master_group, workset_slaves_groups.items()))
 
             # check success
             if len(workset_slaves_groups_wo_mg) < replicas:
-                raise Exception(f"Can't find required {replicas} groups for master {self.get_node_group(nodes=nodes, nodeid=master['id'], maxport=maxport)} {master['id']} {master['host']}:{master['port']}")
+                raise Exception(f"Can't find required {replicas} groups for master {self.get_node_group(nodes=nodes, nodeid=master['node_id'], maxport=maxport)} {master['node_id']} {master['host']}:{master['port']}")
 
             for group in tuple(workset_slaves_groups_wo_mg.keys())[:replicas]:
                 workset_slaves = self.get_slaves(nodes=workset_nodes, maxport=maxport)
                 workset_slaves_groups = self.get_nodes_groups(nodes=workset_slaves, maxport=maxport)
                 slave_for_replicate = workset_slaves_groups[group][0]
-                nodes = self.plan_clusternode_replicate(nodes=nodes, slavenodeid=slave_for_replicate['id'], masternodeid=master['id'])
-                workset_nodes.pop(self.get_node_index(nodes=workset_nodes, nodeid=slave_for_replicate['id']))
+                nodes = self.plan_clusternode_replicate(nodes=nodes, slavenodeid=slave_for_replicate['node_id'], masternodeid=master['node_id'])
+                workset_nodes.pop(self.get_node_index(nodes=workset_nodes, nodeid=slave_for_replicate['node_id']))
         return nodes
 
     def create_command(self, command: str, run_node: Dict[str, Any], affected_node: Dict[str, Any], args: Union[tuple, List] = tuple(),
@@ -310,7 +310,7 @@ class RedisClusterTool:
         """
 
         if command == 'CLUSTER REPLICATE':
-            exec_command = 'CLUSTER REPLICATE ' + affected_node['id']
+            exec_command = 'CLUSTER REPLICATE ' + affected_node['node_id']
             command_desc = f'Attach slave  {run_node["id"]} {run_node["host"]}:{run_node["port"]} ' \
                            f'to {affected_node["id"]} {affected_node["host"]}:{affected_node["port"]}'
 
@@ -338,14 +338,12 @@ class RedisClusterTool:
 
         :param onlyconnected: not use disconnected node
         :rtype: List[Dict[str, Any]]
-        :return: list like {'id': 'nodeid' 'host': 'hostip', 'port': someport,
+        :return: list like {'node_id': 'nodeid' 'host': 'hostip', 'port': someport,
          'flags': ('slave',), 'master': 'masternodeid', 'ping-sent': 0, 'pong-recv': 1610468870000,
          'link-state': 'connected', 'slots': [], 'migrations': []}
         """
         prepared_nodes = []
         for host, params in self.rc.cluster_nodes().items():
-            params['id'] = params['node_id']
-            params['master'] = params['master_id']
             host, port = host.split(':')
             params['host'], params['port'] = host, int(port)
             prepared_nodes.append(params)
@@ -401,7 +399,7 @@ class RedisClusterTool:
             slavenode = self.get_node(nodes=nodes, maxport=maxport, nodeid=slavenodeid)
             if 'slave' not in slavenode['flags']:
                 raise Exception(f'Provided slavenode {slavenode["id"]} is not slave!')
-            masternodes: List[Dict[str, Any]] = list(filter(lambda x: x['id'] == slavenode['master'], self.nodes_reduced_max_port(nodes=nodes, maxport=maxport)))
+            masternodes: List[Dict[str, Any]] = list(filter(lambda x: x['node_id'] == slavenode['master'], self.nodes_reduced_max_port(nodes=nodes, maxport=maxport)))
             if masternodes:
                 return masternodes[0]
             else:
@@ -449,13 +447,13 @@ class RedisClusterTool:
 
         if isinstance(nodeid, str):
             for node in self.nodes_reduced_max_port(nodes=nodes, maxport=maxport):
-                if node['id'] == nodeid:
+                if node['node_id'] == nodeid:
                     return node
         elif isinstance(nodeid, list):
             nodeslist: List = list()
             for ID in nodeid:
                 for node in self.nodes_reduced_max_port(nodes=nodes, maxport=maxport):
-                    if node['id'] == ID:
+                    if node['node_id'] == ID:
                         nodeslist.append(node)
             return nodeslist
 
@@ -543,7 +541,7 @@ class RedisClusterTool:
         if (node and nodeid) or (not node and not nodeid):
             raise Exception('You mast give only node parameter or nodeid parameter')
         if node:
-            nodeid = node['id']
+            nodeid = node['node_id']
         nodesgroups = self.get_nodes_groups(nodes=nodes, maxport=maxport)
         for group, groupnodes in nodesgroups.items():
             if self.get_node(nodes=groupnodes, maxport=maxport, nodeid=nodeid):
@@ -605,7 +603,7 @@ class RedisClusterTool:
         for group, groupnodes in self.get_nodes_groups(nodes=nodes, maxport=maxport).items():
             for masternode in self.get_masters(groupnodes):
                 # get list of slave nodes of defined master on this group
-                slave_nodes_of_master_nodeid = self.get_slaves(nodes=nodes, masternodeid=masternode['id'],
+                slave_nodes_of_master_nodeid = self.get_slaves(nodes=nodes, masternodeid=masternode['node_id'],
                                                                maxport=maxport)
                 # skip check if master has enough slaves, it's not a problem
                 slave_nodes_groups = list(map(lambda node: self.get_node_group(nodes=nodes, maxport=maxport, node=node),
@@ -671,9 +669,9 @@ class RedisClusterTool:
         problem_pairs = []
         slaves: List[Dict[str, Any]] = self.get_slaves(nodes=nodes, maxport=maxport)
         for slave in slaves:
-            master_of_slave = self.get_masters(nodes=nodes, slavenodeid=slave['id'], maxport=maxport)
+            master_of_slave = self.get_masters(nodes=nodes, slavenodeid=slave['node_id'], maxport=maxport)
             if 'slave' in master_of_slave['flags']:
-                problem_pairs.append(tuple([slave['id'], master_of_slave['id']]))
+                problem_pairs.append(tuple([slave['node_id'], master_of_slave['node_id']]))
         return tuple(problem_pairs)
 
     def check_failed_nodes(self, nodes: List[Dict[str, Any]] = None) -> Tuple[Any]:
@@ -773,8 +771,8 @@ class RedisClusterTool:
             for group, problems in check_masterslave_in_group_problem.items():
                 for problem in problems:
                     for slavenode in problem['slaves']:
-                        print(f'    Server {group} has master {problem["master"]["id"]} '
-                              f'{problem["master"]["host"]}:{problem["master"]["port"]} '
+                        print(f'    Server {group} has master {problem["master_id"]["id"]} '
+                              f'{problem["master_id"]["host"]}:{problem["master_id"]["port"]} '
                               f'with slave {slavenode["id"]} {slavenode["host"]}:{slavenode["port"]} '
                               f'on same server')
             print()
@@ -788,8 +786,8 @@ class RedisClusterTool:
                 for problem in problems:
                     subj = ' and '.join([f'{slavenode["id"]} {slavenode["host"]}:{slavenode["port"]}' for slavenode in
                                          problem['slaves']])
-                    print(f'    Server {problem["master"]["host"]} has master {problem["master"]["id"]} '
-                          f'{problem["master"]["host"]}:{problem["master"]["port"]} '
+                    print(f'    Server {problem["master_id"]["host"]} has master {problem["master_id"]["id"]} '
+                          f'{problem["master_id"]["host"]}:{problem["master_id"]["port"]} '
                           f'with {len(problem["slaves"])} slaves {subj} placed in one server {group}')
             print()
 
@@ -859,7 +857,7 @@ class RedisClusterTool:
         if nodes is None:
             nodes = self.currentnodes
         for index, node in enumerate(nodes):
-            if node['id'] == nodeid:
+            if node['node_id'] == nodeid:
                 return index
 
     def plan_clusternode_failover(self, slavenodeid: str, nodes: List[Dict[str, Any]] = None, option: str = 'TAKEOVER',
@@ -885,10 +883,10 @@ class RedisClusterTool:
             masternode = masternode
         else:
             raise Exception('Slavenodeid mast be id of slave node, not master')
-        masternodeindex = self.get_node_index(nodes=nodes, nodeid=masternode['id'])
+        masternodeindex = self.get_node_index(nodes=nodes, nodeid=masternode['node_id'])
         slavenodeindex = self.get_node_index(nodes=nodes, nodeid=slavenodeid)
         slavesofmasterreduced = list(
-            filter(lambda node: node['id'] != slavenodeid, self.get_slaves(nodes=nodes, masternodeid=masternode['id'])))
+            filter(lambda node: node['node_id'] != slavenodeid, self.get_slaves(nodes=nodes, masternodeid=masternode['node_id'])))
 
         # swap old-new master-slave fields
         nodes[masternodeindex]['slots'], nodes[slavenodeindex]['slots'] = nodes[slavenodeindex]['slots'], \
@@ -897,7 +895,7 @@ class RedisClusterTool:
             'master']
         nodes[masternodeindex]['flags'], nodes[slavenodeindex]['flags'] = ('slave',), ('master',)
         for node in slavesofmasterreduced:
-            nodes[self.get_node_index(node['id'])]['master'] = slavenodeid
+            nodes[self.get_node_index(node['node_id'])]['master'] = slavenodeid
 
         if not dryrun:
             slave_node = self.get_node(nodes=nodes, nodeid=slavenodeid)
@@ -1014,7 +1012,7 @@ class RedisClusterTool:
                 # check that group has connected to master slave
                 connectedslave = self.get_slaves(nodes=nodesgroup[group], masternodeid=masternodeid, maxport=maxport)
                 if connectedslave:
-                    return connectedslave.pop()['id']
+                    return connectedslave.pop()['node_id']
             return None
         else:
             return None
@@ -1068,8 +1066,8 @@ class RedisClusterTool:
             nodes = self.currentnodes
         masters_slave_counter = Counter()
         for masternode in self.get_masters(nodes=nodes):
-            masters_slave_counter[masternode['id']] = len(
-                self.get_slaves(nodes=nodes, masternodeid=masternode['id'], maxport=maxport))
+            masters_slave_counter[masternode['node_id']] = len(
+                self.get_slaves(nodes=nodes, masternodeid=masternode['node_id'], maxport=maxport))
         return masters_slave_counter
 
     def check_master_does_not_have_desired_replica_count(self, nodes: List[Dict[str, Any]] = None, replicas: int = REPLICAS,
@@ -1099,7 +1097,7 @@ class RedisClusterTool:
             nodes = self.currentnodes
         problem_master_nodes = self.get_node(nodes=nodes, nodeid=list(
             self.check_master_does_not_have_desired_replica_count(nodes=nodes, replicas=1, maxport=maxport).keys()))
-        return list(map(lambda masternode: masternode['id'], problem_master_nodes))
+        return list(map(lambda masternode: masternode['node_id'], problem_master_nodes))
 
     def find_slave_candidate_for_master_to_replicate(self, masternodeid: str, nodes: List[Dict[str, Any]] = None,
                                                      maxport: int = MAXPORT, replicas: int = REPLICAS) -> str:
@@ -1130,7 +1128,7 @@ class RedisClusterTool:
                 for slave_node in problem['slaves']:
                     slave_node_group = self.get_node_group(nodes=nodes, maxport=maxport, node=slave_node)
                     if slave_node_group not in master_node_slaves_groups:
-                        return slave_node['id']
+                        return slave_node['node_id']
 
         # or return slave of master with the highest number of slaves
         nodesgroup = self.get_nodes_groups(nodes=nodes, maxport=maxport)
@@ -1147,8 +1145,8 @@ class RedisClusterTool:
                 slave_node_group = self.get_node_group(nodes=nodes, maxport=maxport, node=slave_node)
                 if slave_node_group in master_node_slaves_groups:
                     continue
-                if self.get_node(nodes=self.mergevalueslists(nodesgroup), nodeid=slave_node['id']):
-                    return slave_node['id']
+                if self.get_node(nodes=self.mergevalueslists(nodesgroup), nodeid=slave_node['node_id']):
+                    return slave_node['node_id']
 
     def find_candidate_for_slave_to_replicate(self, slavenodeid: str, nodes: List[Dict[str, Any]] = None,
                                               excludegroup: Union[str, list, None] = None,
@@ -1190,7 +1188,7 @@ class RedisClusterTool:
         # iterate from the lowest slave count
         for masternodeid, count in masterslavecounter.most_common()[::-1]:
             # try to find candidate from reduced nodes list
-            if masternodeid in list(map(lambda node: node['id'], groupreducednodelist)):
+            if masternodeid in list(map(lambda node: node['node_id'], groupreducednodelist)):
                 # don't offer for candidate to replicate current master
                 if masternodeid != self.get_node(nodes=nodes, nodeid=slavenodeid)['master']:
                     slave_nodes_of_master_nodeid = self.get_slaves(nodes=nodes, masternodeid=masternodeid)
@@ -1228,7 +1226,7 @@ class RedisClusterTool:
             for group, _ in Counter(cluster_group_master_distribution_problem).most_common():
                 for masternode in self.get_masters(nodes=nodesgroup[group]):
                     slavenodeid = self.find_candidate_for_failover(nodes=nodes, maxport=maxport,
-                                                                   masternodeid=masternode['id'])
+                                                                   masternodeid=masternode['node_id'])
                     if slavenodeid:
                         slavenode = self.get_node(nodes=nodes, nodeid=slavenodeid)
                         slavenodeid_already_in_plan = list(filter(lambda x: 'CLUSTER FAILOVER' in x['kwargs']['command']
@@ -1286,10 +1284,10 @@ class RedisClusterTool:
                 for problem in group_problems:
                     for slavenode in problem['slaves']:
                         master_nodeid_for_replicate_of_candidate: str = cluster.find_candidate_for_slave_to_replicate(
-                            nodes=nodes, excludegroup=group, slavenodeid=slavenode['id'], maxport=maxport,
+                            nodes=nodes, excludegroup=group, slavenodeid=slavenode['node_id'], maxport=maxport,
                             replicas=replicas)
                         if master_nodeid_for_replicate_of_candidate:
-                            return cluster.plan_clusternode_replicate(nodes=nodes, slavenodeid=slavenode['id'],
+                            return cluster.plan_clusternode_replicate(nodes=nodes, slavenodeid=slavenode['node_id'],
                                                                       masternodeid=master_nodeid_for_replicate_of_candidate, deep_copy=True)
             if problems:
                 rebalance_iteration = self.cluster_rebalance_iterate(nodes=nodes, maxport=maxport)
@@ -1324,13 +1322,13 @@ class RedisClusterToolDatacenter(RedisClusterTool):
 
         :param onlyconnected: not use disconnected node
         :rtype: List[Dict[str, Any]]
-        :return: list like {'id': 'nodeid' 'host': 'hostip', 'port': someport,
+        :return: list like {'node_id': 'nodeid' 'host': 'hostip', 'port': someport,
          'flags': ('slave',), 'master': 'masternodeid', 'ping-sent': 0, 'pong-recv': 1610468870000,
          'link-state': 'connected', 'slots': [], 'migrations': []}
         """
         prepared_nodes = []
         for host, params in self.rc.cluster_nodes().items():
-            params['id'] = params['node_id']
+            params['node_id'] = params['node_id']
             params['master'] = params['master_id']
             host, port = host.split(':')
             params['host'], params['port'] = host, int(port)
@@ -1500,8 +1498,8 @@ class RedisClusterToolDatacenter(RedisClusterTool):
             for group, problems in check_masterslave_in_group_problem.items():
                 for problem in problems:
                     for slavenode in problem['slaves']:
-                        print(f'    Datacenter {group} has master {problem["master"]["id"]} '
-                              f'{problem["master"]["host"]}:{problem["master"]["port"]} ({problem["master"]["hostname"]}) '
+                        print(f'    Datacenter {group} has master {problem["master_id"]["id"]} '
+                              f'{problem["master_id"]["host"]}:{problem["master_id"]["port"]} ({problem["master_id"]["hostname"]}) '
                               f'with slave {slavenode["id"]} {slavenode["host"]}:{slavenode["port"]} ({slavenode["hostname"]}) '
                               f'on same datacenter')
             print()
@@ -1515,8 +1513,8 @@ class RedisClusterToolDatacenter(RedisClusterTool):
                 for problem in problems:
                     subj = ' and '.join([f'{slavenode["id"]} {slavenode["host"]}:{slavenode["port"]}' for slavenode in
                                          problem['slaves']])
-                    print(f'    Datacenter {problem["master"]["datacenter"]} has master {problem["master"]["id"]} '
-                          f'{problem["master"]["host"]}:{problem["master"]["port"]} ({problem["master"]["hostname"]}) '
+                    print(f'    Datacenter {problem["master_id"]["datacenter"]} has master {problem["master_id"]["id"]} '
+                          f'{problem["master_id"]["host"]}:{problem["master_id"]["port"]} ({problem["master_id"]["hostname"]}) '
                           f'with {len(problem["slaves"])} slaves {subj} placed in one datacenter {group}')
             print()
 
@@ -1627,9 +1625,9 @@ class RedisClusterToolDatacenter(RedisClusterTool):
                         })
                         # return first slaveid from server with lowest mastercount
                         for serverip, _ in top_masters_count_in_group.most_common()[::-1]:
-                            return list(filter(lambda node: node['host'] == serverip, connectedslave)).pop()['id']
+                            return list(filter(lambda node: node['host'] == serverip, connectedslave)).pop()['node_id']
                     else:
-                        return connectedslave.pop()['id']
+                        return connectedslave.pop()['node_id']
             return None
         else:
             return None
@@ -1662,7 +1660,7 @@ class RedisClusterToolDatacenter(RedisClusterTool):
             for group, _ in Counter(cluster_group_master_distribution_problem).most_common():
                 for masternode in self.get_masters(nodes=nodesgroup[group]):
                     slavenodeid = self.find_candidate_for_failover(nodes=nodes, maxport=maxport,
-                                                                   masternodeid=masternode['id'])
+                                                                   masternodeid=masternode['node_id'])
                     if slavenodeid:
                         slavenode = self.get_node(nodes=nodes, nodeid=slavenodeid)
                         slavenodeid_already_in_plan = list(filter(lambda x: 'CLUSTER FAILOVER' in x['kwargs']['command']
@@ -1692,7 +1690,7 @@ class RedisClusterToolDatacenter(RedisClusterTool):
                     for masternode in list(filter(lambda node: node['host'] == node_ip,
                                                   self.get_masters(nodes=nodesgroup[group]))):
                         slavenodeid = self.find_candidate_for_failover(nodes=nodes, maxport=maxport,
-                                                                       masternodeid=masternode['id'])
+                                                                       masternodeid=masternode['node_id'])
                         if slavenodeid:
                             slavenode = self.get_node(nodes=nodes, nodeid=slavenodeid)
                             slavenodeid_already_in_plan = list(
@@ -1794,9 +1792,9 @@ class RedisClusterToolDatacenter(RedisClusterTool):
                                 if len(neighbor_subgroup_masters) > desired_groups_master_num[neighbor_group][neighbor_subgroup]:
                                     for slave_node in self.get_slaves(nodes=subgroup_nodes, maxport=maxport):
                                         if self.get_node_group(nodes=nodes,
-                                                               node=self.get_masters(nodes=nodes, slavenodeid=slave_node['id'], maxport=maxport),
+                                                               node=self.get_masters(nodes=nodes, slavenodeid=slave_node['node_id'], maxport=maxport),
                                                                maxport=maxport) == neighbor_subgroup:  # orphaned nodes can't exist
-                                            nodes = self.plan_clusternode_failover(nodes=nodes, slavenodeid=slave_node['id'])
+                                            nodes = self.plan_clusternode_failover(nodes=nodes, slavenodeid=slave_node['node_id'])
                                             group_nodes = self.get_nodes_groups(nodes=nodes, maxport=maxport)
                                             subgroup_nodes = self.get_nodes_by_host(nodes=group_nodes[group], host=subgroup)
                                             success = True
@@ -1816,8 +1814,8 @@ class RedisClusterToolDatacenter(RedisClusterTool):
                                 if len(neighbor_subgroup_masters) > desired_groups_master_num[neighbor_group][neighbor_subgroup]:
                                     subgroup_slaves = self.get_slaves(nodes=subgroup_nodes, maxport=maxport)
                                     if subgroup_slaves:
-                                        nodes = self.plan_clusternode_replicate(nodes=nodes, masternodeid=neighbor_subgroup_masters[-1]['id'], slavenodeid=subgroup_slaves[0]['id'])
-                                        nodes = self.plan_clusternode_failover(nodes=nodes, slavenodeid=subgroup_slaves[0]['id'])
+                                        nodes = self.plan_clusternode_replicate(nodes=nodes, masternodeid=neighbor_subgroup_masters[-1]['node_id'], slavenodeid=subgroup_slaves[0]['node_id'])
+                                        nodes = self.plan_clusternode_failover(nodes=nodes, slavenodeid=subgroup_slaves[0]['node_id'])
                                         group_nodes = self.get_nodes_groups(nodes=nodes, maxport=maxport)
                                         subgroup_nodes = self.get_nodes_by_host(nodes=group_nodes[group], host=subgroup)
                                         success = True
@@ -1835,8 +1833,8 @@ class RedisClusterToolDatacenter(RedisClusterTool):
                             if len(self_group_subgroup_neighbor_masters) > desired_groups_master_num[group][self_group_subgroup_neighbor]:
                                 subgroup_slaves = self.get_slaves(nodes=subgroup_nodes, maxport=maxport)
                                 if subgroup_slaves:
-                                    nodes = self.plan_clusternode_replicate(nodes=nodes, masternodeid=self_group_subgroup_neighbor_masters[-1]['id'], slavenodeid=subgroup_slaves[0]['id'])
-                                    nodes = self.plan_clusternode_failover(nodes=nodes, slavenodeid=subgroup_slaves[0]['id'])
+                                    nodes = self.plan_clusternode_replicate(nodes=nodes, masternodeid=self_group_subgroup_neighbor_masters[-1]['node_id'], slavenodeid=subgroup_slaves[0]['node_id'])
+                                    nodes = self.plan_clusternode_failover(nodes=nodes, slavenodeid=subgroup_slaves[0]['node_id'])
                                     group_nodes = self.get_nodes_groups(nodes=nodes, maxport=maxport)
                                     subgroup_nodes = self.get_nodes_by_host(nodes=group_nodes[group], host=subgroup)
                                     break
@@ -1848,8 +1846,8 @@ class RedisClusterToolDatacenter(RedisClusterTool):
                                 neighbor_subgroup_masters = self.get_masters(nodes=neighbor_subgroup_nodes, maxport=maxport)
                                 if len(neighbor_subgroup_masters) < desired_groups_master_num[neighbor_group][neighbor_subgroup]:
                                     for slave_node in self.get_slaves(nodes=neighbor_subgroup_nodes, maxport=maxport):
-                                        if self.get_masters(nodes=nodes, slavenodeid=slave_node['id'], maxport=maxport)['host'] == subgroup:
-                                            nodes = self.plan_clusternode_failover(nodes=nodes, slavenodeid=slave_node['id'])
+                                        if self.get_masters(nodes=nodes, slavenodeid=slave_node['node_id'], maxport=maxport)['host'] == subgroup:
+                                            nodes = self.plan_clusternode_failover(nodes=nodes, slavenodeid=slave_node['node_id'])
                                             group_nodes = self.get_nodes_groups(nodes=nodes, maxport=maxport)
                                             subgroup_nodes = self.get_nodes_by_host(nodes=group_nodes[group], host=subgroup)
                                             subgroup_masters: List[Dict[str, Any]] = self.get_masters(nodes=subgroup_nodes, maxport=maxport)
@@ -1869,8 +1867,8 @@ class RedisClusterToolDatacenter(RedisClusterTool):
                                 if len(neighbor_subgroup_masters) < desired_groups_master_num[neighbor_group][neighbor_subgroup]:
                                     neighbor_subgroup_slaves = self.get_slaves(nodes=neighbor_subgroup_nodes, maxport=maxport)
                                     if neighbor_subgroup_slaves:
-                                        nodes = self.plan_clusternode_replicate(nodes=nodes, masternodeid=subgroup_masters[-1]['id'], slavenodeid=neighbor_subgroup_slaves[0]['id'])
-                                        nodes = self.plan_clusternode_failover(nodes=nodes, slavenodeid=neighbor_subgroup_slaves[0]['id'])
+                                        nodes = self.plan_clusternode_replicate(nodes=nodes, masternodeid=subgroup_masters[-1]['node_id'], slavenodeid=neighbor_subgroup_slaves[0]['node_id'])
+                                        nodes = self.plan_clusternode_failover(nodes=nodes, slavenodeid=neighbor_subgroup_slaves[0]['node_id'])
                                         group_nodes = self.get_nodes_groups(nodes=nodes, maxport=maxport)
                                         subgroup_nodes = self.get_nodes_by_host(nodes=group_nodes[group], host=subgroup)
                                         subgroup_masters = self.get_masters(nodes=subgroup_nodes, maxport=maxport)
@@ -1888,8 +1886,8 @@ class RedisClusterToolDatacenter(RedisClusterTool):
                                 self_group_subgroup_neighbor_slaves = self.get_slaves(nodes=self_group_subgroup_neighbor_nodes, maxport=maxport)
                                 if self_group_subgroup_neighbor_slaves:
                                     nodes = self.plan_clusternode_replicate(nodes=nodes, masternodeid=subgroup_masters[-1][
-                                        'id'], slavenodeid=self_group_subgroup_neighbor_slaves[0]['id'])
-                                    nodes = self.plan_clusternode_failover(nodes=nodes, slavenodeid=self_group_subgroup_neighbor_slaves[0]['id'])
+                                        'node_id'], slavenodeid=self_group_subgroup_neighbor_slaves[0]['node_id'])
+                                    nodes = self.plan_clusternode_failover(nodes=nodes, slavenodeid=self_group_subgroup_neighbor_slaves[0]['node_id'])
                                     group_nodes = self.get_nodes_groups(nodes=nodes, maxport=maxport)
                                     subgroup_nodes = self.get_nodes_by_host(nodes=group_nodes[group], host=subgroup)
                                     subgroup_masters = self.get_masters(nodes=subgroup_nodes, maxport=maxport)
@@ -1913,7 +1911,7 @@ class RedisClusterToolDatacenter(RedisClusterTool):
         """
 
         if command == 'CLUSTER REPLICATE':
-            exec_command = 'CLUSTER REPLICATE ' + affected_node['id']
+            exec_command = 'CLUSTER REPLICATE ' + affected_node['node_id']
             command_desc = f'Attach slave  {run_node["id"]} {run_node["host"]}:{run_node["port"]} group ' \
                            f'{self.get_node_group(node=run_node)} to {affected_node["id"]} {affected_node["host"]}:{affected_node["port"]} group {self.get_node_group(node=affected_node)}'
 
@@ -2081,14 +2079,14 @@ if __name__ == '__main__':
             if master_nodes_for_slave:
                 for masternode in master_nodes_for_slave:
                     slavenodeid = cluster.find_candidate_for_failover(nodes=planned_nodes, maxport=args.reduce,
-                                                                      masternodeid=masternode['id'])
+                                                                      masternodeid=masternode['node_id'])
                     if slavenodeid:
                         planned_nodes = cluster.plan_clusternode_failover(nodes=planned_nodes, slavenodeid=slavenodeid)
                         continue
                     slave_node_for_replicate_candidate = cluster.find_slave_candidate_for_master_to_replicate(
                         nodes=planned_nodes, maxport=args.reduce,
-                        masternodeid=masternode['id'])
-                    planned_nodes = cluster.plan_clusternode_replicate(nodes=planned_nodes, masternodeid=masternode['id'],
+                        masternodeid=masternode['node_id'])
+                    planned_nodes = cluster.plan_clusternode_replicate(nodes=planned_nodes, masternodeid=masternode['node_id'],
                                                                        slavenodeid=slave_node_for_replicate_candidate)
                     planned_nodes = cluster.plan_clusternode_failover(nodes=planned_nodes,
                                                                       slavenodeid=slave_node_for_replicate_candidate)
