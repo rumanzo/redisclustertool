@@ -31,10 +31,13 @@ For example,  you have cluster with 3 servers and redis services on ports 6700-6
 - If redis nodes (each instance) can't be spread across cluster respectfully all rules - redisclustertool print error, try to define lower replica number or fix you configuration
 
 ### Install
-- python 3.10+
+- python 3.6+
+- redis-py
+ 
 ```
 pip -r requirements.txt
 ```
+
 
 ### Help:
 ```
