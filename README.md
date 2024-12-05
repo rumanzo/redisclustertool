@@ -2,7 +2,7 @@
 # Redisclustertool
 ## Description
 
-Rediscluster is a tool for monitoring redis cluster map for misconfigurations and level out masters across all servers or group servers (per datacenter for example)
+Redisclustertool is a tool for monitoring redis cluster map for misconfigurations and level out masters across all servers or group servers (per datacenter for example)
 Has two classes, default and datacenter. For default just run redisclustertool.py. Datacenter use described below
 
 - Has checks:
