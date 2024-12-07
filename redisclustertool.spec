@@ -1,7 +1,7 @@
 %global __os_install_post %{nil}
 
 Name:            redisclustertool
-Version:         1.1
+Version:         1.2
 Release:         1%{?dist}
 BuildArch:       x86_64
 AutoReqProv:     no
