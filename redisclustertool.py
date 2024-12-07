@@ -319,8 +319,8 @@ class RedisClusterTool:
                 exec_command = 'CLUSTER FAILOVER'
             else:
                 exec_command = 'CLUSTER FAILOVER ' + command_option
-            command_desc = f'Failover node {run_node["id"]} {run_node["host"]}:{run_node["port"]} ' \
-                           f'[old master {affected_node["id"]} {affected_node["host"]}:{affected_node["port"]}]'
+            command_desc = f'Failover node {run_node["node_id"]} {run_node["host"]}:{run_node["port"]} ' \
+                           f'[old master {affected_node["node_id"]} {affected_node["host"]}:{affected_node["port"]}]'
         else:
             raise Exception(f"Unknown command for redisclustertool: {command}")
 
@@ -339,7 +339,7 @@ class RedisClusterTool:
         :param onlyconnected: not use disconnected node
         :rtype: List[Dict[str, Any]]
         :return: list like {'node_id': 'nodeid' 'host': 'hostip', 'port': someport,
-         'flags': ('slave',), 'master': 'masternodeid', 'ping-sent': 0, 'pong-recv': 1610468870000,
+         'flags': ('slave',), 'master_id': 'masternodeid', 'ping-sent': 0, 'pong-recv': 1610468870000,
          'link-state': 'connected', 'slots': [], 'migrations': []}
         """
         prepared_nodes = []
@@ -399,7 +399,7 @@ class RedisClusterTool:
             slavenode = self.get_node(nodes=nodes, maxport=maxport, nodeid=slavenodeid)
             if 'slave' not in slavenode['flags']:
                 raise Exception(f'Provided slavenode {slavenode["id"]} is not slave!')
-            masternodes: List[Dict[str, Any]] = list(filter(lambda x: x['node_id'] == slavenode['master'], self.nodes_reduced_max_port(nodes=nodes, maxport=maxport)))
+            masternodes: List[Dict[str, Any]] = list(filter(lambda x: x['node_id'] == slavenode['master_id'], self.nodes_reduced_max_port(nodes=nodes, maxport=maxport)))
             if masternodes:
                 return masternodes[0]
             else:
@@ -423,7 +423,7 @@ class RedisClusterTool:
         if not isinstance(nodes, list):
             raise TypeError(f"Nodes must be list, got {type(nodes)}")
         if masternodeid:
-            return list(filter(lambda node: node['master'] == masternodeid,
+            return list(filter(lambda node: node['master_id'] == masternodeid,
                                self.nodes_reduced_max_port(nodes=nodes, maxport=maxport)))
         else:
             return list(
@@ -640,7 +640,7 @@ class RedisClusterTool:
             groupslavenodes: list = self.get_slaves(nodes=groupnodes, maxport=maxport)
             # get all master's nodeids from slaves node definition
             master_nodeids_of_groupslavenodes: List[str] = sorted(
-                set(filter(None, map(lambda nodeid: nodeid['master'], groupslavenodes))))
+                set(filter(None, map(lambda nodeid: nodeid['master_id'], groupslavenodes))))
             # find all master and slaves in group and append to distribution_problem dict
             for master_nodeid in master_nodeids_of_groupslavenodes:
                 slaves = self.get_slaves(nodes=groupnodes, maxport=maxport, masternodeid=master_nodeid)
@@ -891,11 +891,11 @@ class RedisClusterTool:
         # swap old-new master-slave fields
         nodes[masternodeindex]['slots'], nodes[slavenodeindex]['slots'] = nodes[slavenodeindex]['slots'], \
             nodes[masternodeindex]['slots']
-        nodes[masternodeindex]['master'], nodes[slavenodeindex]['master'] = slavenodeid, nodes[masternodeindex][
-            'master']
+        nodes[masternodeindex]['master_id'], nodes[slavenodeindex]['master_id'] = slavenodeid, nodes[masternodeindex][
+            'master_id']
         nodes[masternodeindex]['flags'], nodes[slavenodeindex]['flags'] = ('slave',), ('master',)
         for node in slavesofmasterreduced:
-            nodes[self.get_node_index(node['node_id'])]['master'] = slavenodeid
+            nodes[self.get_node_index(node['node_id'])]['master_id'] = slavenodeid
 
         if not dryrun:
             slave_node = self.get_node(nodes=nodes, nodeid=slavenodeid)
@@ -930,7 +930,7 @@ class RedisClusterTool:
         if 'master' not in newmasternode['flags']:
             raise Exception('Masternodeid must be id of master node, not slave')
 
-        nodes[self.get_node_index(nodes=nodes, nodeid=slavenodeid)]['master'] = masternodeid
+        nodes[self.get_node_index(nodes=nodes, nodeid=slavenodeid)]['master_id'] = masternodeid
 
         if not dryrun:
             command = self.create_command('CLUSTER REPLICATE', run_node=slavenode, affected_node=newmasternode)
@@ -1190,7 +1190,7 @@ class RedisClusterTool:
             # try to find candidate from reduced nodes list
             if masternodeid in list(map(lambda node: node['node_id'], groupreducednodelist)):
                 # don't offer for candidate to replicate current master
-                if masternodeid != self.get_node(nodes=nodes, nodeid=slavenodeid)['master']:
+                if masternodeid != self.get_node(nodes=nodes, nodeid=slavenodeid)['master_id']:
                     slave_nodes_of_master_nodeid = self.get_slaves(nodes=nodes, masternodeid=masternodeid)
                     # best choice, masternode doesn't have any slaves in slave's node groups
                     if slavenode_group not in self.get_nodes_groups(nodes=slave_nodes_of_master_nodeid).keys():
@@ -1329,7 +1329,7 @@ class RedisClusterToolDatacenter(RedisClusterTool):
         prepared_nodes = []
         for host, params in self.rc.cluster_nodes().items():
             params['node_id'] = params['node_id']
-            params['master'] = params['master_id']
+            params['master_id'] = params['master_id']
             host, port = host.split(':')
             params['host'], params['port'] = host, int(port)
             prepared_nodes.append(params)
