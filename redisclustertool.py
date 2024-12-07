@@ -311,8 +311,8 @@ class RedisClusterTool:
 
         if command == 'CLUSTER REPLICATE':
             exec_command = 'CLUSTER REPLICATE ' + affected_node['node_id']
-            command_desc = f'Attach slave  {run_node["id"]} {run_node["host"]}:{run_node["port"]} ' \
-                           f'to {affected_node["id"]} {affected_node["host"]}:{affected_node["port"]}'
+            command_desc = f'Attach slave  {run_node["node_id"]} {run_node["host"]}:{run_node["port"]} ' \
+                           f'to {affected_node["node_id"]} {affected_node["host"]}:{affected_node["port"]}'
 
         elif command == 'CLUSTER FAILOVER':
             if command_option == "":
@@ -398,7 +398,7 @@ class RedisClusterTool:
         if slavenodeid:
             slavenode = self.get_node(nodes=nodes, maxport=maxport, nodeid=slavenodeid)
             if 'slave' not in slavenode['flags']:
-                raise Exception(f'Provided slavenode {slavenode["id"]} is not slave!')
+                raise Exception(f'Provided slavenode {slavenode["node_id"]} is not slave!')
             masternodes: List[Dict[str, Any]] = list(filter(lambda x: x['node_id'] == slavenode['master_id'], self.nodes_reduced_max_port(nodes=nodes, maxport=maxport)))
             if masternodes:
                 return masternodes[0]
@@ -771,9 +771,9 @@ class RedisClusterTool:
             for group, problems in check_masterslave_in_group_problem.items():
                 for problem in problems:
                     for slavenode in problem['slaves']:
-                        print(f'    Server {group} has master {problem["master_id"]["id"]} '
+                        print(f'    Server {group} has master {problem["master_id"]["node_id"]} '
                               f'{problem["master_id"]["host"]}:{problem["master_id"]["port"]} '
-                              f'with slave {slavenode["id"]} {slavenode["host"]}:{slavenode["port"]} '
+                              f'with slave {slavenode["node_id"]} {slavenode["host"]}:{slavenode["port"]} '
                               f'on same server')
             print()
 
@@ -784,9 +784,9 @@ class RedisClusterTool:
                 f'Too many slaves of one master in group problems ({sum(len(x) for x in check_slavesofmaster_on_group_problem.values())}):')
             for group, problems in check_slavesofmaster_on_group_problem.items():
                 for problem in problems:
-                    subj = ' and '.join([f'{slavenode["id"]} {slavenode["host"]}:{slavenode["port"]}' for slavenode in
+                    subj = ' and '.join([f'{slavenode["node_id"]} {slavenode["host"]}:{slavenode["port"]}' for slavenode in
                                          problem['slaves']])
-                    print(f'    Server {problem["master_id"]["host"]} has master {problem["master_id"]["id"]} '
+                    print(f'    Server {problem["master_id"]["host"]} has master {problem["master_id"]["node_id"]} '
                           f'{problem["master_id"]["host"]}:{problem["master_id"]["port"]} '
                           f'with {len(problem["slaves"])} slaves {subj} placed in one server {group}')
             print()
@@ -798,7 +798,7 @@ class RedisClusterTool:
                 f"Masters don't have desired replica count {replicas} problem ({len(check_master_does_not_have_desired_replica_count)}):")
             for master_node_id, count in check_master_does_not_have_desired_replica_count.items():
                 master_node = self.get_node(nodes=nodes, nodeid=master_node_id)
-                print(f'    Master node {master_node["id"]} ({master_node["host"]}) has {count} replicas')
+                print(f'    Master node {master_node["node_id"]} ({master_node["host"]}) has {count} replicas')
             print()
 
         check_master_does_not_have_slaves: List[str] = self.check_master_does_not_have_slaves(nodes=nodes,
@@ -807,7 +807,7 @@ class RedisClusterTool:
             print(f"Masters without slaves problem ({len(check_master_does_not_have_slaves)}):")
             for master_node_id in check_master_does_not_have_slaves:
                 master_node = self.get_node(nodes=nodes, nodeid=master_node_id)
-                print(f'    Master node {master_node["id"]} ({master_node["host"]}) has no slaves')
+                print(f'    Master node {master_node["node_id"]} ({master_node["host"]}) has no slaves')
             print()
 
         masters_group_skew: Dict = self.check_group_master_distribution(nodes=nodes, maxport=maxport, skew=skew)
@@ -1498,9 +1498,9 @@ class RedisClusterToolDatacenter(RedisClusterTool):
             for group, problems in check_masterslave_in_group_problem.items():
                 for problem in problems:
                     for slavenode in problem['slaves']:
-                        print(f'    Datacenter {group} has master {problem["master_id"]["id"]} '
+                        print(f'    Datacenter {group} has master {problem["master_id"]["node_id"]} '
                               f'{problem["master_id"]["host"]}:{problem["master_id"]["port"]} ({problem["master_id"]["hostname"]}) '
-                              f'with slave {slavenode["id"]} {slavenode["host"]}:{slavenode["port"]} ({slavenode["hostname"]}) '
+                              f'with slave {slavenode["node_id"]} {slavenode["host"]}:{slavenode["port"]} ({slavenode["hostname"]}) '
                               f'on same datacenter')
             print()
 
@@ -1511,9 +1511,9 @@ class RedisClusterToolDatacenter(RedisClusterTool):
                 f'Too many slaves of one master in group problems ({sum(len(x) for x in check_slavesofmaster_on_group_problem.values())}):')
             for group, problems in check_slavesofmaster_on_group_problem.items():
                 for problem in problems:
-                    subj = ' and '.join([f'{slavenode["id"]} {slavenode["host"]}:{slavenode["port"]}' for slavenode in
+                    subj = ' and '.join([f'{slavenode["node_id"]} {slavenode["host"]}:{slavenode["port"]}' for slavenode in
                                          problem['slaves']])
-                    print(f'    Datacenter {problem["master_id"]["datacenter"]} has master {problem["master_id"]["id"]} '
+                    print(f'    Datacenter {problem["master_id"]["datacenter"]} has master {problem["master_id"]["node_id"]} '
                           f'{problem["master_id"]["host"]}:{problem["master_id"]["port"]} ({problem["master_id"]["hostname"]}) '
                           f'with {len(problem["slaves"])} slaves {subj} placed in one datacenter {group}')
             print()
@@ -1526,7 +1526,7 @@ class RedisClusterToolDatacenter(RedisClusterTool):
             for masternodeid, count in check_master_does_not_have_desired_replica_count.items():
                 masternode = self.get_node(nodes=nodes, nodeid=masternodeid)
                 print(
-                    f'    Master node {masternode["id"]} ({masternode["datacenter"]} {masternode["hostname"]}) has {count} replicas')
+                    f'    Master node {masternode["node_id"]} ({masternode["datacenter"]} {masternode["hostname"]}) has {count} replicas')
             print()
 
         check_master_does_not_have_slaves: List[str] = self.check_master_does_not_have_slaves(nodes=nodes,
@@ -1912,16 +1912,16 @@ class RedisClusterToolDatacenter(RedisClusterTool):
 
         if command == 'CLUSTER REPLICATE':
             exec_command = 'CLUSTER REPLICATE ' + affected_node['node_id']
-            command_desc = f'Attach slave  {run_node["id"]} {run_node["host"]}:{run_node["port"]} group ' \
-                           f'{self.get_node_group(node=run_node)} to {affected_node["id"]} {affected_node["host"]}:{affected_node["port"]} group {self.get_node_group(node=affected_node)}'
+            command_desc = f'Attach slave  {run_node["node_id"]} {run_node["host"]}:{run_node["port"]} group ' \
+                           f'{self.get_node_group(node=run_node)} to {affected_node["node_id"]} {affected_node["host"]}:{affected_node["port"]} group {self.get_node_group(node=affected_node)}'
 
         elif command == 'CLUSTER FAILOVER':
             if command_option == "":
                 exec_command = 'CLUSTER FAILOVER'
             else:
                 exec_command = 'CLUSTER FAILOVER ' + command_option
-            command_desc = f'Failover node {run_node["id"]} {run_node["host"]}:{run_node["port"]} group {self.get_node_group(node=run_node)} ' \
-                           f'[old master {affected_node["id"]} {affected_node["host"]}:{affected_node["port"]} group {self.get_node_group(node=affected_node)}]'
+            command_desc = f'Failover node {run_node["node_id"]} {run_node["host"]}:{run_node["port"]} group {self.get_node_group(node=run_node)} ' \
+                           f'[old master {affected_node["node_id"]} {affected_node["host"]}:{affected_node["port"]} group {self.get_node_group(node=affected_node)}]'
         else:
             raise Exception(f"Unknown command for redisclustertool: {command}")
 
